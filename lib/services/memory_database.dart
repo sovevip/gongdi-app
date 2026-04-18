@@ -144,9 +144,13 @@ class MemoryDatabase {
     
     for (var record in todayRecords) {
       final status = record['is_present'] as int?;
-      if (status == 1) present++;
-      else if (status == 0) absent++;
-      else if (status == 2) leave++;
+      if (status == 1) {
+        present++;
+      } else if (status == 0) {
+        absent++;
+      } else if (status == 2) {
+        leave++;
+      }
     }
     
     return {
