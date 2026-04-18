@@ -83,8 +83,8 @@ class _WorkerListPageState extends State<WorkerListPage> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppTheme.primaryColor, AppTheme.primaryLight],
+                      gradient: LinearGradient(
+                        colors: [AppTheme.primaryColor, Colors.blue.shade300],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -412,8 +412,8 @@ class _WorkerListPageState extends State<WorkerListPage> {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppTheme.primaryColor, AppTheme.primaryLight],
+        gradient: LinearGradient(
+          colors: [AppTheme.primaryColor, Colors.blue.shade300],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -563,7 +563,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
+                              color: Colors.black87,
                             ),
                           ),
                           const SizedBox(width: 8),
