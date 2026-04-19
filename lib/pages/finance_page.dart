@@ -127,31 +127,74 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   Future<void> _createAttendanceSheet(Excel excel) async {
-    final sheet = excel['考勤明细表'];
+    final sheet = excel['月度考勤汇总'];
     
     final daysInMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day;
     
-    final headerRow = [TextCellValue('姓名'), TextCellValue('工种')];
+    final titleRow = <CellValue>[];
+    titleRow.add(TextCellValue('${_selectedMonth.year}年${_selectedMonth.month}月考勤汇总表'));
+    for (var i = 1; i < daysInMonth + 5; i++) {
+      titleRow.add(TextCellValue(''));
+    }
+    sheet.appendRow(titleRow);
+
+    final headerRow = <CellValue>[
+      TextCellValue('姓名'),
+      TextCellValue('工种'),
+    ];
     for (var day = 1; day <= daysInMonth; day++) {
       headerRow.add(TextCellValue('$day'));
     }
     headerRow.addAll([
-      TextCellValue('出勤天数'),
-      TextCellValue('加班小时'),
-      TextCellValue('日薪'),
-      TextCellValue('加班费'),
-      TextCellValue('应发总额'),
-      TextCellValue('已发'),
-      TextCellValue('欠款'),
+      TextCellValue('总天数'),
+      TextCellValue('总加班(h)'),
+      TextCellValue('应发工资'),
     ]);
     sheet.appendRow(headerRow);
+
+    final titleStyle = CellStyle(
+      bold: true,
+      fontSize: 16,
+      horizontalAlign: HorizontalAlign.Center,
+    );
+    final headerStyle = CellStyle(
+      bold: true,
+      fontSize: 11,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final dataStyle = CellStyle(
+      fontSize: 10,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final nameStyle = CellStyle(
+      fontSize: 10,
+      bold: true,
+      horizontalAlign: HorizontalAlign.Left,
+      verticalAlign: VerticalAlign.Center,
+    );
+    final summaryStyle = CellStyle(
+      fontSize: 10,
+      bold: true,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+
+    sheet.cell(CellIndex.indexByString('A1')).cellStyle = titleStyle;
+    sheet.merge(CellIndex.indexByString('A1'), CellIndex.indexByColumnRow(columnIndex: daysInMonth + 4, rowIndex: 0));
+
+    for (var col = 0; col < daysInMonth + 5; col++) {
+      final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 1));
+      cell.cellStyle = headerStyle;
+    }
 
     for (var worker in _workerFinanceList) {
       final workerId = worker['id'] as int;
       final attendance = await _db.getAttendanceByWorker(workerId, _monthStart, _monthEnd);
       final attendanceMap = {for (var a in attendance) a['date'] as String: a};
       
-      final row = [
+      final row = <CellValue>[
         TextCellValue(worker['name'] ?? ''),
         TextCellValue(worker['work_type'] ?? ''),
       ];
@@ -175,7 +218,7 @@ class _FinancePageState extends State<FinancePage> {
             cellValue = '√';
           }
         } else if (isPresent == 0) {
-          cellValue = '休';
+          cellValue = '×';
         } else if (isPresent == 2) {
           cellValue = '假';
         }
@@ -186,46 +229,73 @@ class _FinancePageState extends State<FinancePage> {
       final hourlyRate = dailyWage / 8;
       final overtimePay = totalOvertime * hourlyRate;
       final totalSalary = presentDays * dailyWage + overtimePay;
-      final totalPaid = (worker['total_paid'] as num?)?.toDouble() ?? 0;
-      final owed = totalSalary - totalPaid;
       
       row.addAll([
         TextCellValue(presentDays.toString()),
         TextCellValue(totalOvertime.toStringAsFixed(1)),
-        TextCellValue(dailyWage.toStringAsFixed(0)),
-        TextCellValue(overtimePay.toStringAsFixed(0)),
-        TextCellValue(totalSalary.toStringAsFixed(0)),
-        TextCellValue(totalPaid.toStringAsFixed(0)),
-        TextCellValue(owed.toStringAsFixed(0)),
+        TextCellValue('¥${totalSalary.toStringAsFixed(0)}'),
       ]);
       
       sheet.appendRow(row);
     }
 
-    final summaryRow = [TextCellValue('合计'), TextCellValue('')];
-    for (var day = 1; day <= daysInMonth; day++) {
-      summaryRow.add(TextCellValue(''));
-    }
-    
+    final totalPresentDays = _workerFinanceList.fold(0, (sum, w) => sum + ((w['work_days'] as num?)?.toInt() ?? 0));
     double totalOvertimeAll = 0;
-    double totalOvertimePayAll = 0;
+    double totalSalaryAll = 0;
     for (var worker in _workerFinanceList) {
       final overtime = (worker['overtime_hours'] as num?)?.toDouble() ?? 0;
       final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
       totalOvertimeAll += overtime;
-      totalOvertimePayAll += overtime * (dailyWage / 8);
+      totalSalaryAll += (worker['work_days'] as num?)?.toInt() ?? 0 * dailyWage + overtime * (dailyWage / 8);
     }
-    
+    totalSalaryAll = _summary['totalSalary'] ?? 0;
+
+    final summaryRow = <CellValue>[
+      TextCellValue('合计'),
+      TextCellValue(''),
+    ];
+    for (var day = 1; day <= daysInMonth; day++) {
+      summaryRow.add(TextCellValue(''));
+    }
     summaryRow.addAll([
-      TextCellValue(''),
+      TextCellValue(totalPresentDays.toString()),
       TextCellValue(totalOvertimeAll.toStringAsFixed(1)),
-      TextCellValue(''),
-      TextCellValue(totalOvertimePayAll.toStringAsFixed(0)),
-      TextCellValue((_summary['totalSalary'] ?? 0).toStringAsFixed(0)),
-      TextCellValue((_summary['totalPaid'] ?? 0).toStringAsFixed(0)),
-      TextCellValue((_summary['totalOwed'] ?? 0).toStringAsFixed(0)),
+      TextCellValue('¥${totalSalaryAll.toStringAsFixed(0)}'),
     ]);
     sheet.appendRow(summaryRow);
+
+    final lastRowIndex = _workerFinanceList.length + 2;
+    for (var col = 0; col < daysInMonth + 5; col++) {
+      final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: lastRowIndex));
+      cell.cellStyle = summaryStyle;
+    }
+
+    sheet.setColumnWidth(0, 10);
+    sheet.setColumnWidth(1, 8);
+    for (var col = 2; col < daysInMonth + 2; col++) {
+      sheet.setColumnWidth(col, 3.5);
+    }
+    sheet.setColumnWidth(daysInMonth + 2, 8);
+    sheet.setColumnWidth(daysInMonth + 3, 10);
+    sheet.setColumnWidth(daysInMonth + 4, 10);
+
+    for (var row = 2; row < _workerFinanceList.length + 2; row++) {
+      final nameCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row));
+      nameCell.cellStyle = nameStyle;
+      
+      final workTypeCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row));
+      workTypeCell.cellStyle = dataStyle;
+      
+      for (var col = 2; col < daysInMonth + 5; col++) {
+        final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row));
+        cell.cellStyle = dataStyle;
+      }
+    }
+
+    final rowHeight = 18.0;
+    for (var row = 1; row < _workerFinanceList.length + 3; row++) {
+      sheet.setRowHeight(row, rowHeight);
+    }
   }
 
   Future<void> _createSummarySheet(Excel excel) async {
