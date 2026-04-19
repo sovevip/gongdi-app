@@ -97,7 +97,7 @@ class MemoryDatabase {
     }).toList();
   }
 
-  Map<String, int> getAttendanceStats(int workerId, String monthStart, String monthEnd) {
+  Map<String, dynamic> getAttendanceStats(int workerId, String monthStart, String monthEnd) {
     final presentCount = _attendance.where((a) =>
       a['worker_id'] == workerId &&
       a['date'] != null &&
@@ -122,7 +122,22 @@ class MemoryDatabase {
       a['is_present'] == 2
     ).length;
 
-    return {'present': presentCount, 'absent': absentCount, 'leave': leaveCount};
+    final overtimeHours = _attendance
+        .where((a) =>
+          a['worker_id'] == workerId &&
+          a['date'] != null &&
+          a['date'].compareTo(monthStart) >= 0 &&
+          a['date'].compareTo(monthEnd) <= 0 &&
+          a['is_present'] == 1
+        )
+        .fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
+
+    return {
+      'present': presentCount,
+      'absent': absentCount,
+      'leave': leaveCount,
+      'overtime_hours': overtimeHours,
+    };
   }
 
   List<Map<String, dynamic>> getAttendanceByWorker(int workerId, String monthStart, String monthEnd) {
@@ -329,6 +344,7 @@ class MemoryDatabase {
     for (var worker in _workers) {
       final workerId = worker['id'] as int;
       final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      final hourlyRate = dailyWage / 8;
       
       final presentCount = _attendance.where((a) =>
         a['worker_id'] == workerId &&
@@ -338,7 +354,17 @@ class MemoryDatabase {
         a['is_present'] == 1
       ).length;
       
-      totalSalary += presentCount * dailyWage;
+      final overtimeHours = _attendance
+          .where((a) =>
+            a['worker_id'] == workerId &&
+            a['date'] != null &&
+            a['date'].compareTo(monthStart) >= 0 &&
+            a['date'].compareTo(monthEnd) <= 0 &&
+            a['is_present'] == 1
+          )
+          .fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
+      
+      totalSalary += presentCount * dailyWage + overtimeHours * hourlyRate;
     }
 
     totalPaid = _payments
@@ -360,6 +386,7 @@ class MemoryDatabase {
     return _workers.map((worker) {
       final workerId = worker['id'] as int;
       final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      final hourlyRate = dailyWage / 8;
       
       final presentCount = _attendance.where((a) =>
         a['worker_id'] == workerId &&
@@ -369,11 +396,21 @@ class MemoryDatabase {
         a['is_present'] == 1
       ).length;
       
+      final overtimeHours = _attendance
+          .where((a) =>
+            a['worker_id'] == workerId &&
+            a['date'] != null &&
+            a['date'].compareTo(monthStart) >= 0 &&
+            a['date'].compareTo(monthEnd) <= 0 &&
+            a['is_present'] == 1
+          )
+          .fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
+      
       final paid = _payments
           .where((p) => p['worker_id'] == workerId)
           .fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
       
-      final salary = presentCount * dailyWage;
+      final salary = presentCount * dailyWage + overtimeHours * hourlyRate;
 
       return {
         'id': workerId,
@@ -381,6 +418,7 @@ class MemoryDatabase {
         'work_type': worker['work_type'],
         'daily_wage': dailyWage,
         'work_days': presentCount,
+        'overtime_hours': overtimeHours,
         'total_salary': salary,
         'total_paid': paid,
         'owed': salary - paid,

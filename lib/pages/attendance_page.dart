@@ -17,6 +17,7 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
   final DatabaseService _db = DatabaseService();
   List<Map<String, dynamic>> _workers = [];
   Map<int, AttendanceStatus> _attendanceStatus = {};
+  Map<int, double> _overtimeHours = {};
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = true;
 
@@ -43,6 +44,7 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
       final attendance = await _db.getAttendanceByDate(dateStr);
       
       final status = <int, AttendanceStatus>{};
+      final overtime = <int, double>{};
       for (var worker in workers) {
         final workerId = worker['id'] as int;
         final record = attendance.where((a) => a['worker_id'] == workerId).firstOrNull;
@@ -56,11 +58,13 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
         } else {
           status[workerId] = AttendanceStatus.unmarked;
         }
+        overtime[workerId] = (record?['overtime_hours'] as num?)?.toDouble() ?? 0;
       }
       
       setState(() {
         _workers = workers;
         _attendanceStatus = status;
+        _overtimeHours = overtime;
         _isLoading = false;
       });
     } catch (e) {
@@ -73,7 +77,7 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
     }
   }
 
-  Future<void> _setAttendance(int workerId, AttendanceStatus status) async {
+  Future<void> _setAttendance(int workerId, AttendanceStatus status, {double? overtime}) async {
     int isPresent;
     switch (status) {
       case AttendanceStatus.present:
@@ -94,10 +98,14 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
         'worker_id': workerId,
         'date': _selectedDate.toIso8601String().split('T').first,
         'is_present': isPresent,
+        'overtime_hours': overtime ?? _overtimeHours[workerId] ?? 0,
         'created_at': DateTime.now().toIso8601String(),
       });
       setState(() {
         _attendanceStatus[workerId] = status;
+        if (overtime != null) {
+          _overtimeHours[workerId] = overtime;
+        }
       });
     } catch (e) {
       if (mounted) {
@@ -105,6 +113,13 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
           SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
         );
       }
+    }
+  }
+
+  Future<void> _updateOvertime(int workerId, double hours) async {
+    _overtimeHours[workerId] = hours;
+    if (_attendanceStatus[workerId] == AttendanceStatus.present) {
+      await _setAttendance(workerId, AttendanceStatus.present, overtime: hours);
     }
   }
 
@@ -116,6 +131,7 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
           'worker_id': workerId,
           'date': _selectedDate.toIso8601String().split('T').first,
           'is_present': 1,
+          'overtime_hours': _overtimeHours[workerId] ?? 0,
           'created_at': DateTime.now().toIso8601String(),
         });
         _attendanceStatus[workerId] = AttendanceStatus.present;
@@ -140,10 +156,12 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final presentCount = _attendanceStatus.values.where((v) => v == AttendanceStatus.present).length;
     final absentCount = _attendanceStatus.values.where((v) => v == AttendanceStatus.absent).length;
     final leaveCount = _attendanceStatus.values.where((v) => v == AttendanceStatus.leave).length;
     final unmarkedCount = _workers.length - presentCount - absentCount - leaveCount;
+    final totalOvertime = _overtimeHours.values.fold(0.0, (sum, h) => sum + h);
 
     return Scaffold(
       appBar: AppBar(
@@ -160,7 +178,7 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
         child: Column(
           children: [
             _buildDateCard(context),
-            _buildStatsCard(context, presentCount, absentCount, leaveCount, unmarkedCount),
+            _buildStatsCard(context, presentCount, absentCount, leaveCount, unmarkedCount, totalOvertime),
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -192,8 +210,8 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppTheme.primaryColor, AppTheme.primaryLight],
+        gradient: LinearGradient(
+          colors: [AppTheme.primaryColor, Colors.blue.shade300],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -233,7 +251,7 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
     );
   }
 
-  Widget _buildStatsCard(BuildContext context, int present, int absent, int leave, int unmarked) {
+  Widget _buildStatsCard(BuildContext context, int present, int absent, int leave, int unmarked, double totalOvertime) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -248,16 +266,44 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _buildStatItem('应到', '${_workers.length}', AppTheme.primaryColor),
-          Container(height: 40, width: 1, color: Colors.grey[200]),
-          _buildStatItem('出勤', '$present', Colors.green),
-          Container(height: 40, width: 1, color: Colors.grey[200]),
-          _buildStatItem('缺勤', '$absent', Colors.red),
-          Container(height: 40, width: 1, color: Colors.grey[200]),
-          _buildStatItem('请假', '$leave', Colors.blue),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem('应到', '${_workers.length}', AppTheme.primaryColor),
+              Container(height: 40, width: 1, color: Colors.grey[200]),
+              _buildStatItem('出勤', '$present', Colors.green),
+              Container(height: 40, width: 1, color: Colors.grey[200]),
+              _buildStatItem('缺勤', '$absent', Colors.red),
+              Container(height: 40, width: 1, color: Colors.grey[200]),
+              _buildStatItem('请假', '$leave', Colors.blue),
+            ],
+          ),
+          if (totalOvertime > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.access_time, size: 16, color: Colors.orange),
+                  const SizedBox(width: 6),
+                  Text(
+                    '今日加班总计: ${totalOvertime.toStringAsFixed(1)} 小时',
+                    style: const TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -354,82 +400,190 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
   Widget _buildWorkerItem(Map<String, dynamic> worker) {
     final workerId = worker['id'] as int;
     final status = _attendanceStatus[workerId] ?? AttendanceStatus.unmarked;
+    final overtime = _overtimeHours[workerId] ?? 0;
+    final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
           children: [
-            _buildStatusIndicator(status),
-            const SizedBox(width: 12),
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-              child: Text(
-                (worker['name'] as String).isNotEmpty
-                    ? worker['name'].substring(0, 1)
-                    : '?',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    worker['name'] ?? '',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    worker['work_type'] ?? '',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
             Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                _buildStatusButton(
-                  icon: Icons.check,
-                  label: '出勤',
-                  isSelected: status == AttendanceStatus.present,
-                  color: Colors.green,
-                  onTap: () => _setAttendance(workerId, AttendanceStatus.present),
+                _buildStatusIndicator(status),
+                const SizedBox(width: 12),
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                  child: Text(
+                    (worker['name'] as String).isNotEmpty
+                        ? worker['name'].substring(0, 1)
+                        : '?',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 6),
-                _buildStatusButton(
-                  icon: Icons.close,
-                  label: '缺勤',
-                  isSelected: status == AttendanceStatus.absent,
-                  color: Colors.red,
-                  onTap: () => _setAttendance(workerId, AttendanceStatus.absent),
-                ),
-                const SizedBox(width: 6),
-                _buildStatusButton(
-                  icon: Icons.beach_access,
-                  label: '请假',
-                  isSelected: status == AttendanceStatus.leave,
-                  color: Colors.blue,
-                  onTap: () => _setAttendance(workerId, AttendanceStatus.leave),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        worker['name'] ?? '',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            worker['work_type'] ?? '',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${dailyWage.toStringAsFixed(0)}元/天',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildStatusButton(
+                        icon: Icons.check,
+                        label: '出勤',
+                        isSelected: status == AttendanceStatus.present,
+                        color: Colors.green,
+                        onTap: () => _setAttendance(workerId, AttendanceStatus.present),
+                      ),
+                      _buildStatusButton(
+                        icon: Icons.close,
+                        label: '缺勤',
+                        isSelected: status == AttendanceStatus.absent,
+                        color: Colors.red,
+                        onTap: () => _setAttendance(workerId, AttendanceStatus.absent),
+                      ),
+                      _buildStatusButton(
+                        icon: Icons.beach_access,
+                        label: '请假',
+                        isSelected: status == AttendanceStatus.leave,
+                        color: Colors.blue,
+                        onTap: () => _setAttendance(workerId, AttendanceStatus.leave),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (status == AttendanceStatus.present) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.access_time, size: 18, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '加班小时:',
+                      style: TextStyle(fontSize: 14, color: Colors.black87),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildOvertimeButton(workerId, 0, overtime == 0),
+                    _buildOvertimeButton(workerId, 1, overtime == 1),
+                    _buildOvertimeButton(workerId, 2, overtime == 2),
+                    _buildOvertimeButton(workerId, 3, overtime == 3),
+                    _buildOvertimeButton(workerId, 4, overtime == 4),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: '自定义',
+                          hintStyle: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          isDense: true,
+                        ),
+                        controller: TextEditingController(text: overtime > 4 ? overtime.toStringAsFixed(1) : ''),
+                        onSubmitted: (value) {
+                          final hours = double.tryParse(value) ?? 0;
+                          _updateOvertime(workerId, hours);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOvertimeButton(int workerId, double hours, bool isSelected) {
+    return GestureDetector(
+      onTap: () => _updateOvertime(workerId, hours),
+      child: Container(
+        width: 36,
+        height: 36,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.orange : Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.orange,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            hours.toStringAsFixed(0),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isSelected ? Colors.white : Colors.orange,
+            ),
+          ),
         ),
       ),
     );

@@ -83,53 +83,18 @@ class _FinancePageState extends State<FinancePage> {
     
     try {
       final excel = Excel.createExcel();
-      final sheet = excel['工资结算表'];
+      
+      await _createAttendanceSheet(excel);
+      await _createSummarySheet(excel);
 
-      sheet.appendRow([
-        TextCellValue('序号'),
-        TextCellValue('姓名'),
-        TextCellValue('工种'),
-        TextCellValue('日薪(元)'),
-        TextCellValue('出勤天数'),
-        TextCellValue('应发工资(元)'),
-        TextCellValue('已发工资(元)'),
-        TextCellValue('欠款(元)'),
-      ]);
-
-      for (var i = 0; i < _workerFinanceList.length; i++) {
-        final worker = _workerFinanceList[i];
-        sheet.appendRow([
-          IntCellValue(i + 1),
-          TextCellValue(worker['name'] ?? ''),
-          TextCellValue(worker['work_type'] ?? ''),
-          DoubleCellValue((worker['daily_wage'] as num?)?.toDouble() ?? 0),
-          IntCellValue(worker['work_days'] ?? 0),
-          DoubleCellValue((worker['total_salary'] as num?)?.toDouble() ?? 0),
-          DoubleCellValue((worker['total_paid'] as num?)?.toDouble() ?? 0),
-          DoubleCellValue((worker['owed'] as num?)?.toDouble() ?? 0),
-        ]);
-      }
-
-      sheet.appendRow([]);
-      sheet.appendRow([
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue('合计:'),
-        DoubleCellValue(_summary['totalSalary'] ?? 0),
-        DoubleCellValue(_summary['totalPaid'] ?? 0),
-        DoubleCellValue(_summary['totalOwed'] ?? 0),
-      ]);
-
-      final fileName = '工资结算_${SiteTimeHelper.formatDateForFile(_selectedMonth)}.xlsx';
+      final fileName = '考勤工资表_${SiteTimeHelper.formatDateForFile(_selectedMonth)}.xlsx';
       final bytes = excel.encode();
       
       if (bytes != null) {
         if (kIsWeb) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Excel已生成，Web端暂不支持下载'), backgroundColor: Colors.green),
+              const SnackBar(content: Text('Excel已生成，Web端暂不支持下载'), backgroundColor: Colors.green),
             );
           }
         } else {
@@ -142,8 +107,8 @@ class _FinancePageState extends State<FinancePage> {
           if (mounted) {
             await Share.shareXFiles(
               [XFile(filePath)],
-              subject: '工资结算表',
-              text: '工资结算表 - ${SiteTimeHelper.getMonthName(_selectedMonth.month)}',
+              subject: '考勤工资表',
+              text: '考勤工资表 - ${SiteTimeHelper.getMonthName(_selectedMonth.month)}',
             );
           }
         }
@@ -159,6 +124,168 @@ class _FinancePageState extends State<FinancePage> {
         setState(() => _isExporting = false);
       }
     }
+  }
+
+  Future<void> _createAttendanceSheet(Excel excel) async {
+    final sheet = excel['考勤明细表'];
+    
+    final daysInMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0).day;
+    
+    final headerRow = [TextCellValue('姓名'), TextCellValue('工种')];
+    for (var day = 1; day <= daysInMonth; day++) {
+      headerRow.add(TextCellValue('$day'));
+    }
+    headerRow.addAll([
+      TextCellValue('出勤天数'),
+      TextCellValue('加班小时'),
+      TextCellValue('日薪'),
+      TextCellValue('加班费'),
+      TextCellValue('应发总额'),
+      TextCellValue('已发'),
+      TextCellValue('欠款'),
+    ]);
+    sheet.appendRow(headerRow);
+
+    for (var worker in _workerFinanceList) {
+      final workerId = worker['id'] as int;
+      final attendance = await _db.getAttendanceByWorker(workerId, _monthStart, _monthEnd);
+      final attendanceMap = {for (var a in attendance) a['date'] as String: a};
+      
+      final row = [
+        TextCellValue(worker['name'] ?? ''),
+        TextCellValue(worker['work_type'] ?? ''),
+      ];
+      
+      int presentDays = 0;
+      double totalOvertime = 0;
+      
+      for (var day = 1; day <= daysInMonth; day++) {
+        final dateStr = '${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+        final record = attendanceMap[dateStr];
+        final isPresent = record?['is_present'] as int?;
+        final overtime = (record?['overtime_hours'] as num?)?.toDouble() ?? 0;
+        
+        String cellValue = '';
+        if (isPresent == 1) {
+          presentDays++;
+          totalOvertime += overtime;
+          if (overtime > 0) {
+            cellValue = '√+${overtime.toStringAsFixed(0)}h';
+          } else {
+            cellValue = '√';
+          }
+        } else if (isPresent == 0) {
+          cellValue = '休';
+        } else if (isPresent == 2) {
+          cellValue = '假';
+        }
+        row.add(TextCellValue(cellValue));
+      }
+      
+      final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      final hourlyRate = dailyWage / 8;
+      final overtimePay = totalOvertime * hourlyRate;
+      final totalSalary = presentDays * dailyWage + overtimePay;
+      final totalPaid = (worker['total_paid'] as num?)?.toDouble() ?? 0;
+      final owed = totalSalary - totalPaid;
+      
+      row.addAll([
+        TextCellValue(presentDays.toString()),
+        TextCellValue(totalOvertime.toStringAsFixed(1)),
+        TextCellValue(dailyWage.toStringAsFixed(0)),
+        TextCellValue(overtimePay.toStringAsFixed(0)),
+        TextCellValue(totalSalary.toStringAsFixed(0)),
+        TextCellValue(totalPaid.toStringAsFixed(0)),
+        TextCellValue(owed.toStringAsFixed(0)),
+      ]);
+      
+      sheet.appendRow(row);
+    }
+
+    final summaryRow = [TextCellValue('合计'), TextCellValue('')];
+    for (var day = 1; day <= daysInMonth; day++) {
+      summaryRow.add(TextCellValue(''));
+    }
+    
+    double totalOvertimeAll = 0;
+    double totalOvertimePayAll = 0;
+    for (var worker in _workerFinanceList) {
+      final overtime = (worker['overtime_hours'] as num?)?.toDouble() ?? 0;
+      final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      totalOvertimeAll += overtime;
+      totalOvertimePayAll += overtime * (dailyWage / 8);
+    }
+    
+    summaryRow.addAll([
+      TextCellValue(''),
+      TextCellValue(totalOvertimeAll.toStringAsFixed(1)),
+      TextCellValue(''),
+      TextCellValue(totalOvertimePayAll.toStringAsFixed(0)),
+      TextCellValue((_summary['totalSalary'] ?? 0).toStringAsFixed(0)),
+      TextCellValue((_summary['totalPaid'] ?? 0).toStringAsFixed(0)),
+      TextCellValue((_summary['totalOwed'] ?? 0).toStringAsFixed(0)),
+    ]);
+    sheet.appendRow(summaryRow);
+  }
+
+  Future<void> _createSummarySheet(Excel excel) async {
+    final sheet = excel['工资结算汇总'];
+    
+    sheet.appendRow([
+      TextCellValue('序号'),
+      TextCellValue('姓名'),
+      TextCellValue('工种'),
+      TextCellValue('日薪(元)'),
+      TextCellValue('出勤天数'),
+      TextCellValue('加班小时'),
+      TextCellValue('加班费(元)'),
+      TextCellValue('应发工资(元)'),
+      TextCellValue('已发工资(元)'),
+      TextCellValue('欠款(元)'),
+    ]);
+
+    for (var i = 0; i < _workerFinanceList.length; i++) {
+      final worker = _workerFinanceList[i];
+      final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      final overtimeHours = (worker['overtime_hours'] as num?)?.toDouble() ?? 0;
+      final overtimePay = overtimeHours * (dailyWage / 8);
+      
+      sheet.appendRow([
+        TextCellValue((i + 1).toString()),
+        TextCellValue(worker['name'] ?? ''),
+        TextCellValue(worker['work_type'] ?? ''),
+        TextCellValue(dailyWage.toStringAsFixed(0)),
+        TextCellValue((worker['work_days'] ?? 0).toString()),
+        TextCellValue(overtimeHours.toStringAsFixed(1)),
+        TextCellValue(overtimePay.toStringAsFixed(0)),
+        TextCellValue(((worker['total_salary'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)),
+        TextCellValue(((worker['total_paid'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)),
+        TextCellValue(((worker['owed'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)),
+      ]);
+    }
+
+    double totalOvertimeAll = 0;
+    double totalOvertimePayAll = 0;
+    for (var worker in _workerFinanceList) {
+      final overtime = (worker['overtime_hours'] as num?)?.toDouble() ?? 0;
+      final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      totalOvertimeAll += overtime;
+      totalOvertimePayAll += overtime * (dailyWage / 8);
+    }
+
+    sheet.appendRow([]);
+    sheet.appendRow([
+      TextCellValue(''),
+      TextCellValue(''),
+      TextCellValue(''),
+      TextCellValue(''),
+      TextCellValue('合计:'),
+      TextCellValue(totalOvertimeAll.toStringAsFixed(1)),
+      TextCellValue(totalOvertimePayAll.toStringAsFixed(0)),
+      TextCellValue((_summary['totalSalary'] ?? 0).toStringAsFixed(0)),
+      TextCellValue((_summary['totalPaid'] ?? 0).toStringAsFixed(0)),
+      TextCellValue((_summary['totalOwed'] ?? 0).toStringAsFixed(0)),
+    ]);
   }
 
   void _showPaymentDialog() {
@@ -246,7 +373,7 @@ class _FinancePageState extends State<FinancePage> {
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
               : const Icon(Icons.file_download),
-          label: Text(_isExporting ? '导出中...' : '导出 Excel'),
+          label: Text(_isExporting ? '导出中...' : '导出专业考勤表'),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.primaryColor,
             foregroundColor: Colors.white,
@@ -288,11 +415,20 @@ class _FinancePageState extends State<FinancePage> {
   }
 
   Widget _buildSummaryCard(BuildContext context) {
+    double totalOvertime = 0;
+    double totalOvertimePay = 0;
+    for (var worker in _workerFinanceList) {
+      final overtime = (worker['overtime_hours'] as num?)?.toDouble() ?? 0;
+      final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      totalOvertime += overtime;
+      totalOvertimePay += overtime * (dailyWage / 8);
+    }
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppTheme.primaryColor, AppTheme.primaryLight],
+        gradient: LinearGradient(
+          colors: [AppTheme.primaryColor, Colors.blue.shade300],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -354,6 +490,30 @@ class _FinancePageState extends State<FinancePage> {
               ),
             ],
           ),
+          if (totalOvertime > 0) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.access_time, size: 16, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    '加班总计: ${totalOvertime.toStringAsFixed(1)}小时 = ¥${totalOvertimePay.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -399,7 +559,7 @@ class _FinancePageState extends State<FinancePage> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+                    color: Colors.black87,
                   ),
                 ),
                 Text(
@@ -442,6 +602,9 @@ class _FinancePageState extends State<FinancePage> {
   Widget _buildWorkerItem(Map<String, dynamic> worker) {
     final owed = (worker['owed'] as num?)?.toDouble() ?? 0;
     final workDays = worker['work_days'] ?? 0;
+    final overtimeHours = (worker['overtime_hours'] as num?)?.toDouble() ?? 0;
+    final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+    final overtimePay = overtimeHours * (dailyWage / 8);
     final totalSalary = (worker['total_salary'] as num?)?.toDouble() ?? 0;
     final totalPaid = (worker['total_paid'] as num?)?.toDouble() ?? 0;
 
@@ -475,7 +638,7 @@ class _FinancePageState extends State<FinancePage> {
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: AppTheme.textPrimary,
+                        color: Colors.black87,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -501,9 +664,23 @@ class _FinancePageState extends State<FinancePage> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '×${(worker['daily_wage'] as num?)?.toDouble().toStringAsFixed(0) ?? 0}元',
+                      '×${dailyWage.toStringAsFixed(0)}元',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
+                    if (overtimeHours > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '+${overtimeHours.toStringAsFixed(1)}h加班',
+                          style: const TextStyle(fontSize: 10, color: Colors.orange),
+                        ),
+                      ),
+                    ],
                     const SizedBox(width: 8),
                     Text(
                       '=¥${totalSalary.toStringAsFixed(0)}',
@@ -557,7 +734,7 @@ class _FinancePageState extends State<FinancePage> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+                    color: Colors.black87,
                   ),
                 ),
                 Text(
@@ -627,7 +804,7 @@ class _FinancePageState extends State<FinancePage> {
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
-                        color: AppTheme.textPrimary,
+                        color: Colors.black87,
                       ),
                     ),
                     if (note != null && note.isNotEmpty) ...[
@@ -730,7 +907,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
+                      color: Colors.black87,
                     ),
                   ),
                 ],

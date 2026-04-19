@@ -373,6 +373,12 @@ class _ArchivePageState extends State<ArchivePage> {
     final presentCount = _attendanceData.where((d) => d['is_present'] == 1).length;
     final absentCount = _attendanceData.where((d) => d['is_present'] == 0).length;
     final leaveCount = _attendanceData.where((d) => d['is_present'] == 2).length;
+    final totalOvertime = _attendanceData.fold(0.0, (sum, d) {
+      if (d['is_present'] == 1) {
+        return sum + ((d['overtime_hours'] as num?)?.toDouble() ?? 0);
+      }
+      return sum;
+    });
 
     return Card(
       margin: EdgeInsets.zero,
@@ -390,7 +396,7 @@ class _ArchivePageState extends State<ArchivePage> {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+                    color: Colors.black87,
                   ),
                 ),
                 Row(
@@ -405,6 +411,27 @@ class _ArchivePageState extends State<ArchivePage> {
                 ),
               ],
             ),
+            if (totalOvertime > 0) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.access_time, size: 14, color: Colors.orange),
+                    const SizedBox(width: 4),
+                    Text(
+                      '加班总计: ${totalOvertime.toStringAsFixed(1)}小时',
+                      style: const TextStyle(fontSize: 12, color: Colors.orange),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (_attendanceData.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -447,6 +474,7 @@ class _ArchivePageState extends State<ArchivePage> {
     final isPresent = data['is_present'] as int?;
     final name = data['name'] as String? ?? '未知';
     final workType = data['work_type'] as String? ?? '';
+    final overtimeHours = (data['overtime_hours'] as num?)?.toDouble() ?? 0;
 
     Color statusColor = Colors.grey;
     IconData statusIcon = Icons.radio_button_unchecked;
@@ -485,30 +513,45 @@ class _ArchivePageState extends State<ArchivePage> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              name,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (workType.isNotEmpty)
+                  Text(
+                    workType,
+                    style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                  ),
+              ],
             ),
           ),
-          if (workType.isNotEmpty)
+          if (isPresent == 1 && overtimeHours > 0) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Text(
-                workType,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: AppTheme.primaryColor,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.access_time, size: 10, color: Colors.orange),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${overtimeHours.toStringAsFixed(1)}h',
+                    style: const TextStyle(fontSize: 10, color: Colors.orange),
+                  ),
+                ],
               ),
             ),
-          const SizedBox(width: 6),
+            const SizedBox(width: 6),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(

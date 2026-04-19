@@ -7,7 +7,7 @@ class DatabaseService {
   static Database? _database;
   static MemoryDatabase? _memoryDb;
   static const String _databaseName = 'gongdi.db';
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
 
   static const String tableWorkers = 'workers';
   static const String tableAttendance = 'attendance';
@@ -59,6 +59,7 @@ class DatabaseService {
         worker_id INTEGER NOT NULL,
         date TEXT NOT NULL,
         is_present INTEGER NOT NULL DEFAULT 1,
+        overtime_hours REAL NOT NULL DEFAULT 0,
         note TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (worker_id) REFERENCES $tableWorkers (id)
@@ -171,6 +172,13 @@ class DatabaseService {
         // Column might already exist
       }
     }
+    if (oldVersion < 4) {
+      try {
+        await db.execute('ALTER TABLE $tableAttendance ADD COLUMN overtime_hours REAL NOT NULL DEFAULT 0');
+      } catch (e) {
+        // Column might already exist
+      }
+    }
   }
 
   Future<int> insertWorker(Map<String, dynamic> worker) async {
@@ -262,7 +270,7 @@ class DatabaseService {
     ''', [date]);
   }
 
-  Future<Map<String, int>> getAttendanceStats(int workerId, String monthStart, String monthEnd) async {
+  Future<Map<String, dynamic>> getAttendanceStats(int workerId, String monthStart, String monthEnd) async {
     final db = await _db;
     if (kIsWeb) {
       return (db as MemoryDatabase).getAttendanceStats(workerId, monthStart, monthEnd);
@@ -288,7 +296,18 @@ class DatabaseService {
       ''', [workerId, monthStart, monthEnd]),
     ) ?? 0;
 
-    return {'present': presentCount, 'absent': absentCount, 'leave': leaveCount};
+    final overtimeResult = await db.rawQuery('''
+      SELECT SUM(overtime_hours) as total_overtime FROM $tableAttendance
+      WHERE worker_id = ? AND date >= ? AND date <= ? AND is_present = 1
+    ''', [workerId, monthStart, monthEnd]);
+    final totalOvertime = (overtimeResult.first['total_overtime'] as num?)?.toDouble() ?? 0;
+
+    return {
+      'present': presentCount,
+      'absent': absentCount,
+      'leave': leaveCount,
+      'overtime_hours': totalOvertime,
+    };
   }
 
   Future<List<Map<String, dynamic>>> getAttendanceByWorker(int workerId, String monthStart, String monthEnd) async {
@@ -592,6 +611,7 @@ class DatabaseService {
     for (var worker in workers) {
       final workerId = worker['id'] as int;
       final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      final hourlyRate = dailyWage / 8;
       
       final presentCount = Sqflite.firstIntValue(
         await db.rawQuery('''
@@ -600,7 +620,13 @@ class DatabaseService {
         ''', [workerId, monthStart, monthEnd]),
       ) ?? 0;
       
-      totalSalary += presentCount * dailyWage;
+      final overtimeResult = await db.rawQuery('''
+        SELECT SUM(overtime_hours) as total_overtime FROM $tableAttendance
+        WHERE worker_id = ? AND date >= ? AND date <= ? AND is_present = 1
+      ''', [workerId, monthStart, monthEnd]);
+      final overtimeHours = (overtimeResult.first['total_overtime'] as num?)?.toDouble() ?? 0;
+      
+      totalSalary += presentCount * dailyWage + overtimeHours * hourlyRate;
     }
 
     final paidResult = await db.rawQuery('''
@@ -628,6 +654,7 @@ class DatabaseService {
     for (var worker in workers) {
       final workerId = worker['id'] as int;
       final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+      final hourlyRate = dailyWage / 8;
       
       final presentCount = Sqflite.firstIntValue(
         await db.rawQuery('''
@@ -636,13 +663,19 @@ class DatabaseService {
         ''', [workerId, monthStart, monthEnd]),
       ) ?? 0;
       
+      final overtimeResult = await db.rawQuery('''
+        SELECT SUM(overtime_hours) as total_overtime FROM $tableAttendance
+        WHERE worker_id = ? AND date >= ? AND date <= ? AND is_present = 1
+      ''', [workerId, monthStart, monthEnd]);
+      final overtimeHours = (overtimeResult.first['total_overtime'] as num?)?.toDouble() ?? 0;
+      
       final paidResult = await db.rawQuery('''
         SELECT SUM(amount) as total FROM $tablePayments
         WHERE worker_id = ?
       ''', [workerId]);
       final paid = (paidResult.first['total'] as num?)?.toDouble() ?? 0;
       
-      final salary = presentCount * dailyWage;
+      final salary = presentCount * dailyWage + overtimeHours * hourlyRate;
 
       result.add({
         'id': workerId,
@@ -650,6 +683,7 @@ class DatabaseService {
         'work_type': worker['work_type'],
         'daily_wage': dailyWage,
         'work_days': presentCount,
+        'overtime_hours': overtimeHours,
         'total_salary': salary,
         'total_paid': paid,
         'owed': salary - paid,

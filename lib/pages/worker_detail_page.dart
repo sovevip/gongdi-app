@@ -19,7 +19,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   final DatabaseService _db = DatabaseService();
   List<Map<String, dynamic>> _payments = [];
   List<Map<String, dynamic>> _attendanceRecords = [];
-  Map<String, int> _attendanceStats = {'present': 0, 'absent': 0, 'leave': 0};
+  Map<String, dynamic> _attendanceStats = {'present': 0, 'absent': 0, 'leave': 0, 'overtime_hours': 0.0};
   double _totalPaid = 0;
   bool _isLoading = true;
   DateTime _selectedMonth = DateTime.now();
@@ -61,7 +61,12 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     }
   }
 
-  double get _totalSalary => _attendanceStats['present']! * _dailyWage;
+  double get _totalSalary {
+    final present = (_attendanceStats['present'] as num?)?.toInt() ?? 0;
+    final overtime = (_attendanceStats['overtime_hours'] as num?)?.toDouble() ?? 0;
+    final hourlyRate = _dailyWage / 8;
+    return present * _dailyWage + overtime * hourlyRate;
+  }
   double get _owedSalary => _totalSalary - _totalPaid;
 
   Set<String> get _presentDates => _attendanceRecords
