@@ -310,6 +310,30 @@ class DatabaseService {
     };
   }
 
+  Future<Map<String, dynamic>> getCumulativeAttendanceStats(int workerId) async {
+    final db = await _db;
+    if (kIsWeb) {
+      return (db as MemoryDatabase).getCumulativeAttendanceStats(workerId);
+    }
+    final presentCount = Sqflite.firstIntValue(
+      await (db as Database).rawQuery('SELECT COUNT(*) FROM $tableAttendance WHERE worker_id = ? AND is_present = 1', [workerId]),
+    ) ?? 0;
+    final absentCount = Sqflite.firstIntValue(
+      await (db as Database).rawQuery('SELECT COUNT(*) FROM $tableAttendance WHERE worker_id = ? AND is_present = 0', [workerId]),
+    ) ?? 0;
+    final leaveCount = Sqflite.firstIntValue(
+      await (db as Database).rawQuery('SELECT COUNT(*) FROM $tableAttendance WHERE worker_id = ? AND is_present = 2', [workerId]),
+    ) ?? 0;
+    final overtimeResult = await (db as Database).rawQuery('SELECT SUM(overtime_hours) as total FROM $tableAttendance WHERE worker_id = ? AND is_present = 1', [workerId]);
+    final overtimeHours = (overtimeResult.first['total'] as num?)?.toDouble() ?? 0;
+    return {
+      'present': presentCount,
+      'absent': absentCount,
+      'leave': leaveCount,
+      'overtime_hours': overtimeHours,
+    };
+  }
+
   Future<List<Map<String, dynamic>>> getAttendanceByWorker(int workerId, String monthStart, String monthEnd) async {
     final db = await _db;
     if (kIsWeb) {

@@ -140,6 +140,22 @@ class MemoryDatabase {
     };
   }
 
+  Map<String, dynamic> getCumulativeAttendanceStats(int workerId) {
+    final allRecords = _attendance.where((a) => a['worker_id'] == workerId);
+    final presentCount = allRecords.where((a) => a['is_present'] == 1).length;
+    final absentCount = allRecords.where((a) => a['is_present'] == 0).length;
+    final leaveCount = allRecords.where((a) => a['is_present'] == 2).length;
+    final overtimeHours = allRecords
+        .where((a) => a['is_present'] == 1)
+        .fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
+    return {
+      'present': presentCount,
+      'absent': absentCount,
+      'leave': leaveCount,
+      'overtime_hours': overtimeHours,
+    };
+  }
+
   List<Map<String, dynamic>> getAttendanceByWorker(int workerId, String monthStart, String monthEnd) {
     return _attendance.where((a) =>
       a['worker_id'] == workerId &&
