@@ -13,7 +13,8 @@ class AttendancePage extends StatefulWidget {
   State<AttendancePage> createState() => _AttendancePageState();
 }
 
-class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAliveClientMixin {
+class _AttendancePageState extends State<AttendancePage>
+    with AutomaticKeepAliveClientMixin {
   final DatabaseService _db = DatabaseService();
   List<Map<String, dynamic>> _workers = [];
   Map<int, AttendanceStatus> _attendanceStatus = {};
@@ -42,12 +43,14 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
       final workers = await _db.getAllWorkers();
       final dateStr = _selectedDate.toIso8601String().split('T').first;
       final attendance = await _db.getAttendanceByDate(dateStr);
-      
+
       final status = <int, AttendanceStatus>{};
       final overtime = <int, double>{};
       for (var worker in workers) {
         final workerId = worker['id'] as int;
-        final record = attendance.where((a) => a['worker_id'] == workerId).firstOrNull;
+        final record = attendance
+            .where((a) => a['worker_id'] == workerId)
+            .firstOrNull;
         final isPresent = record?['is_present'] as int?;
         if (isPresent == 1) {
           status[workerId] = AttendanceStatus.present;
@@ -58,9 +61,10 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
         } else {
           status[workerId] = AttendanceStatus.unmarked;
         }
-        overtime[workerId] = (record?['overtime_hours'] as num?)?.toDouble() ?? 0;
+        overtime[workerId] =
+            (record?['overtime_hours'] as num?)?.toDouble() ?? 0;
       }
-      
+
       setState(() {
         _workers = workers;
         _attendanceStatus = status;
@@ -71,13 +75,15 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('加载失败: $e'), backgroundColor: Colors.red),
         );
       }
     }
   }
 
-  Future<void> _setAttendance(int workerId, AttendanceStatus status, {double? overtime}) async {
+  Future<void> _setAttendance(int workerId, AttendanceStatus status,
+      {double? overtime}) async {
     int isPresent;
     switch (status) {
       case AttendanceStatus.present:
@@ -117,9 +123,10 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
   }
 
   Future<void> _updateOvertime(int workerId, double hours) async {
-    _overtimeHours[workerId] = hours;
+    setState(() => _overtimeHours[workerId] = hours);
     if (_attendanceStatus[workerId] == AttendanceStatus.present) {
-      await _setAttendance(workerId, AttendanceStatus.present, overtime: hours);
+      await _setAttendance(workerId, AttendanceStatus.present,
+          overtime: hours);
     }
   }
 
@@ -148,7 +155,8 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('操作失败: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -157,11 +165,19 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final presentCount = _attendanceStatus.values.where((v) => v == AttendanceStatus.present).length;
-    final absentCount = _attendanceStatus.values.where((v) => v == AttendanceStatus.absent).length;
-    final leaveCount = _attendanceStatus.values.where((v) => v == AttendanceStatus.leave).length;
-    final unmarkedCount = _workers.length - presentCount - absentCount - leaveCount;
-    final totalOvertime = _overtimeHours.values.fold(0.0, (sum, h) => sum + h);
+    final presentCount = _attendanceStatus.values
+        .where((v) => v == AttendanceStatus.present)
+        .length;
+    final absentCount = _attendanceStatus.values
+        .where((v) => v == AttendanceStatus.absent)
+        .length;
+    final leaveCount = _attendanceStatus.values
+        .where((v) => v == AttendanceStatus.leave)
+        .length;
+    final unmarkedCount =
+        _workers.length - presentCount - absentCount - leaveCount;
+    final totalOvertime =
+        _overtimeHours.values.fold(0.0, (sum, h) => sum + h);
 
     return Scaffold(
       appBar: AppBar(
@@ -178,7 +194,8 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
         child: Column(
           children: [
             _buildDateCard(context),
-            _buildStatsCard(context, presentCount, absentCount, leaveCount, unmarkedCount, totalOvertime),
+            _buildStatsCard(context, presentCount, absentCount,
+                leaveCount, unmarkedCount, totalOvertime),
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -244,14 +261,16 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
           TextButton.icon(
             onPressed: _selectDate,
             icon: const Icon(Icons.edit_calendar, color: Colors.white),
-            label: const Text('切换日期', style: TextStyle(color: Colors.white)),
+            label: const Text('切换日期',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsCard(BuildContext context, int present, int absent, int leave, int unmarked, double totalOvertime) {
+  Widget _buildStatsCard(BuildContext context, int present, int absent,
+      int leave, int unmarked, double totalOvertime) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -271,19 +290,24 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildStatItem('应到', '${_workers.length}', AppTheme.primaryColor),
-              Container(height: 40, width: 1, color: Colors.grey[200]),
+              _buildStatItem(
+                  '应到', '${_workers.length}', AppTheme.primaryColor),
+              Container(
+                  height: 40, width: 1, color: Colors.grey[200]),
               _buildStatItem('出勤', '$present', Colors.green),
-              Container(height: 40, width: 1, color: Colors.grey[200]),
+              Container(
+                  height: 40, width: 1, color: Colors.grey[200]),
               _buildStatItem('缺勤', '$absent', Colors.red),
-              Container(height: 40, width: 1, color: Colors.grey[200]),
+              Container(
+                  height: 40, width: 1, color: Colors.grey[200]),
               _buildStatItem('请假', '$leave', Colors.blue),
             ],
           ),
           if (totalOvertime > 0) ...[
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.orange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
@@ -291,7 +315,8 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.access_time, size: 16, color: Colors.orange),
+                  const Icon(Icons.access_time,
+                      size: 16, color: Colors.orange),
                   const SizedBox(width: 6),
                   Text(
                     '今日加班总计: ${totalOvertime.toStringAsFixed(1)} 小时',
@@ -337,16 +362,19 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.people_outline, size: 80, color: Colors.grey[300]),
+          Icon(Icons.people_outline,
+              size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
             '暂无工人数据',
-            style: TextStyle(fontSize: 16, color: Colors.grey[500]),
+            style:
+                TextStyle(fontSize: 16, color: Colors.grey[500]),
           ),
           const SizedBox(height: 8),
           Text(
             '请先在工人管理中添加工人',
-            style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+            style:
+                TextStyle(fontSize: 14, color: Colors.grey[400]),
           ),
           if (kDebugMode) ...[
             const SizedBox(height: 24),
@@ -368,11 +396,36 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
   Future<void> _generateDemoData() async {
     try {
       final demoWorkers = [
-        {'name': '张三', 'work_type': '钢筋工', 'phone': '13800138001', 'daily_wage': 300.0},
-        {'name': '李四', 'work_type': '木工', 'phone': '13800138002', 'daily_wage': 280.0},
-        {'name': '王五', 'work_type': '混凝土工', 'phone': '13800138003', 'daily_wage': 320.0},
-        {'name': '赵六', 'work_type': '电工', 'phone': '13800138004', 'daily_wage': 350.0},
-        {'name': '钱七', 'work_type': '焊工', 'phone': '13800138005', 'daily_wage': 380.0},
+        {
+          'name': '张三',
+          'work_type': '钢筋工',
+          'phone': '13800138001',
+          'daily_wage': 300.0
+        },
+        {
+          'name': '李四',
+          'work_type': '木工',
+          'phone': '13800138002',
+          'daily_wage': 280.0
+        },
+        {
+          'name': '王五',
+          'work_type': '混凝土工',
+          'phone': '13800138003',
+          'daily_wage': 320.0
+        },
+        {
+          'name': '赵六',
+          'work_type': '电工',
+          'phone': '13800138004',
+          'daily_wage': 350.0
+        },
+        {
+          'name': '钱七',
+          'work_type': '焊工',
+          'phone': '13800138005',
+          'daily_wage': 380.0
+        },
       ];
 
       for (var worker in demoWorkers) {
@@ -391,7 +444,9 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('生成失败: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('生成失败: $e'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -399,9 +454,11 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
 
   Widget _buildWorkerItem(Map<String, dynamic> worker) {
     final workerId = worker['id'] as int;
-    final status = _attendanceStatus[workerId] ?? AttendanceStatus.unmarked;
+    final status =
+        _attendanceStatus[workerId] ?? AttendanceStatus.unmarked;
     final overtime = _overtimeHours[workerId] ?? 0;
-    final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+    final dailyWage =
+        (worker['daily_wage'] as num?)?.toDouble() ?? 0;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -415,7 +472,8 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
                 const SizedBox(width: 12),
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                  backgroundColor:
+                      AppTheme.primaryColor.withOpacity(0.1),
                   child: Text(
                     (worker['name'] as String).isNotEmpty
                         ? worker['name'].substring(0, 1)
@@ -452,10 +510,13 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
                           ),
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
+                              color: AppTheme.primaryColor
+                                  .withOpacity(0.1),
+                              borderRadius:
+                                  BorderRadius.circular(4),
                             ),
                             child: Text(
                               '${dailyWage.toStringAsFixed(0)}元/天',
@@ -477,113 +538,49 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
               children: [
                 Expanded(
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment:
+                        MainAxisAlignment.spaceEvenly,
                     children: [
                       _buildStatusButton(
                         icon: Icons.check,
                         label: '出勤',
-                        isSelected: status == AttendanceStatus.present,
+                        isSelected:
+                            status == AttendanceStatus.present,
                         color: Colors.green,
-                        onTap: () => _setAttendance(workerId, AttendanceStatus.present),
+                        onTap: () => _setAttendance(
+                            workerId, AttendanceStatus.present),
                       ),
                       _buildStatusButton(
                         icon: Icons.close,
                         label: '缺勤',
-                        isSelected: status == AttendanceStatus.absent,
+                        isSelected:
+                            status == AttendanceStatus.absent,
                         color: Colors.red,
-                        onTap: () => _setAttendance(workerId, AttendanceStatus.absent),
+                        onTap: () => _setAttendance(
+                            workerId, AttendanceStatus.absent),
                       ),
                       _buildStatusButton(
                         icon: Icons.beach_access,
                         label: '请假',
-                        isSelected: status == AttendanceStatus.leave,
+                        isSelected:
+                            status == AttendanceStatus.leave,
                         color: Colors.blue,
-                        onTap: () => _setAttendance(workerId, AttendanceStatus.leave),
+                        onTap: () => _setAttendance(
+                            workerId, AttendanceStatus.leave),
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            if (status == AttendanceStatus.present) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.access_time, size: 18, color: Colors.orange),
-                    const SizedBox(width: 8),
-                    const Text(
-                      '加班小时:',
-                      style: TextStyle(fontSize: 14, color: Colors.black87),
-                    ),
-                    const SizedBox(width: 8),
-                    _buildOvertimeButton(workerId, 0, overtime == 0),
-                    _buildOvertimeButton(workerId, 1, overtime == 1),
-                    _buildOvertimeButton(workerId, 2, overtime == 2),
-                    _buildOvertimeButton(workerId, 3, overtime == 3),
-                    _buildOvertimeButton(workerId, 4, overtime == 4),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        keyboardType: TextInputType.number,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: '自定义',
-                          hintStyle: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          isDense: true,
-                        ),
-                        controller: TextEditingController(text: overtime > 4 ? overtime.toStringAsFixed(1) : ''),
-                        onSubmitted: (value) {
-                          final hours = double.tryParse(value) ?? 0;
-                          _updateOvertime(workerId, hours);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+            if (status == AttendanceStatus.present)
+              _OvertimeInputRow(
+                key: ValueKey('overtime_${workerId}_$overtime'),
+                overtime: overtime,
+                workerId: workerId,
+                onChanged: (h) => _updateOvertime(workerId, h),
               ),
-            ],
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOvertimeButton(int workerId, double hours, bool isSelected) {
-    return GestureDetector(
-      onTap: () => _updateOvertime(workerId, hours),
-      child: Container(
-        width: 36,
-        height: 36,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.orange : Colors.orange.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: Colors.orange,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        child: Center(
-          child: Text(
-            hours.toStringAsFixed(0),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: isSelected ? Colors.white : Colors.orange,
-            ),
-          ),
         ),
       ),
     );
@@ -592,7 +589,7 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
   Widget _buildStatusIndicator(AttendanceStatus status) {
     Color color;
     IconData icon;
-    
+
     switch (status) {
       case AttendanceStatus.present:
         color = Colors.green;
@@ -624,11 +621,13 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected ? color : color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color, width: isSelected ? 2 : 1),
+          border:
+              Border.all(color: color, width: isSelected ? 2 : 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -665,5 +664,170 @@ class _AttendancePageState extends State<AttendancePage> with AutomaticKeepAlive
       setState(() => _selectedDate = picked);
       _loadData();
     }
+  }
+}
+
+class _OvertimeInputRow extends StatefulWidget {
+  final double overtime;
+  final int workerId;
+  final Function(double) onChanged;
+  const _OvertimeInputRow({
+    super.key,
+    required this.overtime,
+    required this.workerId,
+    required this.onChanged,
+  });
+
+  @override
+  State<_OvertimeInputRow> createState() => _OvertimeInputRowState();
+}
+
+class _OvertimeInputRowState extends State<_OvertimeInputRow> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+  static const _presets = [0, 1, 2, 3, 4];
+
+  bool get _isPresetValue => _presets.contains(widget.overtime);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: _isPresetValue ? '' : widget.overtime.toStringAsFixed(1),
+    );
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(_OvertimeInputRow old) {
+    super.didUpdateWidget(old);
+    if (old.overtime != widget.overtime) {
+      _controller.text =
+          _isPresetValue ? '' : widget.overtime.toStringAsFixed(1);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      final value =
+          double.tryParse(_controller.text.trim()) ?? widget.overtime;
+      if (value != widget.overtime) {
+        widget.onChanged(value);
+      }
+    }
+  }
+
+  void _onPresetTap(double hours) {
+    widget.onChanged(hours);
+    _controller.clear();
+  }
+
+  void _onCustomSubmit(String value) {
+    final hours = double.tryParse(value.trim()) ?? 0;
+    widget.onChanged(hours);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+          border:
+              Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.access_time,
+                size: 18, color: Colors.orange),
+            const SizedBox(width: 6),
+            const Text('加班:',
+                style:
+                    TextStyle(fontSize: 13, color: Colors.black87)),
+            const SizedBox(width: 6),
+            ..._presets.map((h) => GestureDetector(
+                  onTap: () => _onPresetTap(h.toDouble()),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    margin:
+                        const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: widget.overtime == h
+                          ? Colors.orange
+                          : Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.orange,
+                        width: widget.overtime == h ? 2 : 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$h',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: widget.overtime == h
+                              ? Colors.white
+                              : Colors.orange,
+                        ),
+                      ),
+                    ),
+                  ),
+                )),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 68,
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _isPresetValue
+                      ? Colors.grey[400]
+                      : Colors.orange[800],
+                ),
+                decoration: InputDecoration(
+                  hintText: _isPresetValue ? '自定义' : '',
+                  hintStyle: TextStyle(
+                      fontSize: 11, color: Colors.grey[350]),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 4, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  isDense: true,
+                ),
+                onSubmitted: _onCustomSubmit,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text('小时',
+                style: TextStyle(
+                    fontSize: 12, color: Colors.grey[500])),
+          ],
+        ),
+      ),
+    );
   }
 }
