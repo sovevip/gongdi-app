@@ -19,6 +19,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
   List<Map<String, dynamic>> _workerMonthData = [];
   double _monthTotalSalary = 0;
   double _monthTotalPaid = 0;
+  double _monthTotalOwed = 0;
   int _monthPresentTotal = 0;
   bool _monthDataLoading = false;
 
@@ -64,6 +65,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
       final monthData = <Map<String, dynamic>>[];
       double totalSalary = 0;
       double totalPaid = 0;
+      double totalOwed = 0;
       int presentTotal = 0;
 
       for (var worker in _workers) {
@@ -80,9 +82,11 @@ class _WorkerListPageState extends State<WorkerListPage> {
         final salary = present * dailyWage + overtime * hourlyRate;
         final paid = await _db.getWorkerPaymentsByMonth(
             workerId, _monthStart, _monthEnd);
+        final owed = salary - paid;
 
         totalSalary += salary;
         totalPaid += paid;
+        totalOwed += owed;
         presentTotal += present;
 
         monthData.add({
@@ -91,7 +95,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
           'overtime_hours': overtime,
           'total_salary': salary,
           'total_paid': paid,
-          'owed': salary - paid,
+          'owed': owed,
         });
       }
 
@@ -99,6 +103,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
         _workerMonthData = monthData;
         _monthTotalSalary = totalSalary;
         _monthTotalPaid = totalPaid;
+        _monthTotalOwed = totalOwed;
         _monthPresentTotal = presentTotal;
         _monthDataLoading = false;
       });
@@ -630,7 +635,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
   Widget _buildSummaryCard(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [AppTheme.primaryColor, Colors.blue.shade300],
@@ -642,17 +647,15 @@ class _WorkerListPageState extends State<WorkerListPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildSummaryItem(
-              '总人数', '${_workers.length}'),
+          _buildSummaryItem('总人数', '${_workers.length}'),
           Container(height: 40, width: 1, color: Colors.white24),
-          _buildSummaryItem('出勤',
-              '$monthPresentTotal天', small: true),
+          _buildSummaryItem('出勤', '$_monthPresentTotal天', small: true),
           Container(height: 40, width: 1, color: Colors.white24),
-          _buildSummaryItem('应发',
-              '¥${_monthTotalSalary.toStringAsFixed(0)}', small: true),
+          _buildSummaryItem('应发', '¥${_monthTotalSalary.toStringAsFixed(0)}', small: true),
           Container(height: 40, width: 1, color: Colors.white24),
-          _buildSummaryItem('已付',
-              '¥${_monthTotalPaid.toStringAsFixed(0)}', small: true),
+          _buildSummaryItem('已付', '¥${_monthTotalPaid.toStringAsFixed(0)}', small: true),
+          Container(height: 40, width: 1, color: Colors.white24),
+          _buildSummaryItem('欠款', '¥${_monthTotalOwed.toStringAsFixed(0)}', small: true),
         ],
       ),
     );
@@ -675,7 +678,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                 value,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: small ? 16 : 20,
+                  fontSize: small ? 14 : 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -693,13 +696,10 @@ class _WorkerListPageState extends State<WorkerListPage> {
 
   Widget _buildWorkerCard(
       BuildContext context, Map<String, dynamic> worker) {
-    final monthData =
-        _getWorkerMonthData(worker['id'] as int);
+    final monthData = _getWorkerMonthData(worker['id'] as int);
     final workDays = monthData['work_days'] as int? ?? 0;
-    final salary =
-        (monthData['total_salary'] as num?)?.toDouble() ?? 0;
-    final paid =
-        (monthData['total_paid'] as num?)?.toDouble() ?? 0;
+    final salary = (monthData['total_salary'] as num?)?.toDouble() ?? 0;
+    final paid = (monthData['total_paid'] as num?)?.toDouble() ?? 0;
     final owed = (monthData['owed'] as num?)?.toDouble() ?? 0;
     final overtime =
         (monthData['overtime_hours'] as num?)?.toDouble() ?? 0;
@@ -720,8 +720,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                 const Text('确认删除'),
               ],
             ),
-            content:
-                Text('确定要删除工人"${worker['name']}"吗？'),
+            content: Text('确定要删除工人"${worker['name']}"吗？'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -769,8 +768,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
           color: Colors.red,
           borderRadius: BorderRadius.circular(16),
         ),
-        child:
-            const Icon(Icons.delete, color: Colors.white, size: 32),
+        child: const Icon(Icons.delete, color: Colors.white, size: 32),
       ),
       child: Card(
         margin: const EdgeInsets.only(bottom: 12),
@@ -779,8 +777,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
             await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    WorkerDetailPage(worker: worker),
+                builder: (_) => WorkerDetailPage(worker: worker),
               ),
             );
             _loadWorkers();
@@ -812,8 +809,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
@@ -827,14 +823,12 @@ class _WorkerListPageState extends State<WorkerListPage> {
                               ),
                               const SizedBox(width: 8),
                               Container(
-                                padding:
-                                    const EdgeInsets.symmetric(
+                                padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppTheme
-                                      .primaryColor
+                                  color: AppTheme.primaryColor
                                       .withOpacity(0.1),
                                   borderRadius:
                                       BorderRadius.circular(4),
@@ -843,8 +837,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                                   worker['work_type'] ?? '',
                                   style: const TextStyle(
                                     fontSize: 12,
-                                    color:
-                                        AppTheme.primaryColor,
+                                    color: AppTheme.primaryColor,
                                   ),
                                 ),
                               ),
@@ -914,12 +907,11 @@ class _WorkerListPageState extends State<WorkerListPage> {
                         mainAxisAlignment:
                             MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildCardStat(
-                              '出勤', '$workDays天',
+                          _buildCardStat('出勤', '$workDays天',
                               Colors.green),
                           if (overtime > 0)
-                            _buildCardStat('加班',
-                                '${overtime}h', Colors.orange),
+                            _buildCardStat('加班', '${overtime}h',
+                                Colors.orange),
                           _buildCardStat('应发',
                               '¥${salary.toStringAsFixed(0)}',
                               Colors.blue),
@@ -929,9 +921,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                           _buildCardStat(
                             '结余',
                             '¥${owed.toStringAsFixed(0)}',
-                            owed > 0
-                                ? Colors.red
-                                : Colors.green,
+                            owed > 0 ? Colors.red : Colors.green,
                           ),
                         ],
                       ),
@@ -943,8 +933,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
     );
   }
 
-  Widget _buildCardStat(
-      String label, String value, Color color) {
+  Widget _buildCardStat(String label, String value, Color color) {
     return Column(
       children: [
         Text(
