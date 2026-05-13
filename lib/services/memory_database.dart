@@ -242,6 +242,17 @@ class MemoryDatabase {
         .fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
   }
 
+  double getWorkerPaymentsByMonth(int workerId, String monthStart, String monthEnd) {
+    return _payments
+        .where((p) =>
+          p['worker_id'] == workerId &&
+          p['date'] != null &&
+          p['date'].compareTo(monthStart) >= 0 &&
+          p['date'].compareTo(monthEnd) <= 0
+        )
+        .fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
+  }
+
   List<Map<String, dynamic>> getAllPayments() {
     return _payments.map((p) {
       final worker = getWorkerById(p['worker_id'] as int);
