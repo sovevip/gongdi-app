@@ -31,7 +31,13 @@ class MemoryDatabase {
 
   int insertWorker(Map<String, dynamic> worker) {
     final id = _workerIdCounter++;
-    _workers.add({'id': id, ...worker});
+    final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
+    final overtimeRate = (worker['overtime_rate'] as num?)?.toDouble();
+    _workers.add({
+      'id': id,
+      ...worker,
+      'overtime_rate': overtimeRate ?? (dailyWage / 8),
+    });
     return id;
   }
 
@@ -50,7 +56,7 @@ class MemoryDatabase {
   int updateWorker(int id, Map<String, dynamic> worker) {
     final index = _workers.indexWhere((w) => w['id'] == id);
     if (index != -1) {
-      _workers[index] = {'id': id, ...worker};
+      _workers[index] = {'id': id, ..._workers[index], ...worker};
       return 1;
     }
     return 0;
@@ -140,6 +146,22 @@ class MemoryDatabase {
     };
   }
 
+  Map<String, dynamic> getCumulativeAttendanceStats(int workerId) {
+    final allRecords = _attendance.where((a) => a['worker_id'] == workerId);
+    final presentCount = allRecords.where((a) => a['is_present'] == 1).length;
+    final absentCount = allRecords.where((a) => a['is_present'] == 0).length;
+    final leaveCount = allRecords.where((a) => a['is_present'] == 2).length;
+    final overtimeHours = allRecords
+        .where((a) => a['is_present'] == 1)
+        .fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
+    return {
+      'present': presentCount,
+      'absent': absentCount,
+      'leave': leaveCount,
+      'overtime_hours': overtimeHours,
+    };
+  }
+
   List<Map<String, dynamic>> getAttendanceByWorker(int workerId, String monthStart, String monthEnd) {
     return _attendance.where((a) =>
       a['worker_id'] == workerId &&
@@ -159,13 +181,9 @@ class MemoryDatabase {
     
     for (var record in todayRecords) {
       final status = record['is_present'] as int?;
-      if (status == 1) {
-        present++;
-      } else if (status == 0) {
-        absent++;
-      } else if (status == 2) {
-        leave++;
-      }
+      if (status == 1) present++;
+      else if (status == 0) absent++;
+      else if (status == 2) leave++;
     }
     
     return {
@@ -184,11 +202,8 @@ class MemoryDatabase {
   }
 
   Map<String, dynamic>? getSiteLogByDate(String date) {
-    try {
-      return _siteLogs.firstWhere((l) => l['date'] == date);
-    } catch (_) {
-      return null;
-    }
+    try { return _siteLogs.firstWhere((l) => l['date'] == date); }
+    catch (_) { return null; }
   }
 
   List<Map<String, dynamic>> getSiteLogsByMonth(String monthStart, String monthEnd) {
@@ -210,19 +225,13 @@ class MemoryDatabase {
   }
 
   double getTotalPaidByWorker(int workerId) {
-    return _salaryRecords
-        .where((r) => r['worker_id'] == workerId)
-        .fold(0.0, (sum, r) => sum + ((r['amount'] as num?)?.toDouble() ?? 0));
+    return _salaryRecords.where((r) => r['worker_id'] == workerId).fold(0.0, (sum, r) => sum + ((r['amount'] as num?)?.toDouble() ?? 0));
   }
 
   List<Map<String, dynamic>> getAllSalaryRecords() {
     return _salaryRecords.map((r) {
       final worker = getWorkerById(r['worker_id'] as int);
-      return {
-        ...r,
-        'name': worker?['name'] ?? '未知',
-        'work_type': worker?['work_type'] ?? '',
-      };
+      return {...r, 'name': worker?['name'] ?? '未知', 'work_type': worker?['work_type'] ?? ''};
     }).toList();
   }
 
@@ -237,192 +246,56 @@ class MemoryDatabase {
   }
 
   double getTotalPaymentsByWorker(int workerId) {
-    return _payments
-        .where((p) => p['worker_id'] == workerId)
-        .fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
+    return _payments.where((p) => p['worker_id'] == workerId).fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
+  }
+
+  double getWorkerPaymentsByMonth(int workerId, String monthStart, String monthEnd) {
+    return _payments.where((p) => p['worker_id'] == workerId && p['date'] != null && p['date'].compareTo(monthStart) >= 0 && p['date'].compareTo(monthEnd) <= 0).fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
   }
 
   List<Map<String, dynamic>> getAllPayments() {
     return _payments.map((p) {
       final worker = getWorkerById(p['worker_id'] as int);
-      return {
-        ...p,
-        'name': worker?['name'] ?? '未知',
-        'work_type': worker?['work_type'] ?? '',
-      };
+      return {...p, 'name': worker?['name'] ?? '未知', 'work_type': worker?['work_type'] ?? ''};
     }).toList();
   }
 
-  int insertMaterial(Map<String, dynamic> material) {
-    final id = _materialIdCounter++;
-    _materials.add({'id': id, ...material});
-    return id;
-  }
-
-  List<Map<String, dynamic>> getAllMaterials() {
-    return List.from(_materials)..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
-  }
-
-  int updateMaterial(int id, Map<String, dynamic> material) {
-    final index = _materials.indexWhere((m) => m['id'] == id);
-    if (index != -1) {
-      _materials[index] = {'id': id, ...material};
-      return 1;
-    }
-    return 0;
-  }
-
-  int deleteMaterial(int id) {
-    final index = _materials.indexWhere((m) => m['id'] == id);
-    if (index != -1) {
-      _materials.removeAt(index);
-      return 1;
-    }
-    return 0;
-  }
-
-  int insertMaterialRecord(Map<String, dynamic> record) {
-    final id = _materialRecordIdCounter++;
-    _materialRecords.add({'id': id, ...record});
-    return id;
-  }
-
-  List<Map<String, dynamic>> getMaterialRecords(int materialId) {
-    return _materialRecords.where((r) => r['material_id'] == materialId).map((r) {
-      final material = _materials.firstWhere((m) => m['id'] == materialId, orElse: () => {});
-      return {
-        ...r,
-        'name': material['name'] ?? '',
-        'unit': material['unit'] ?? '',
-      };
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> getAllMaterialRecords() {
-    return _materialRecords.map((r) {
-      final material = _materials.firstWhere((m) => m['id'] == r['material_id'], orElse: () => {});
-      return {
-        ...r,
-        'name': material['name'] ?? '',
-        'unit': material['unit'] ?? '',
-      };
-    }).toList();
-  }
-
-  double getMaterialStock(int materialId) {
-    final totalIn = _materialRecords
-        .where((r) => r['material_id'] == materialId && r['type'] == 'in')
-        .fold(0.0, (sum, r) => sum + ((r['quantity'] as num?)?.toDouble() ?? 0));
-    final totalOut = _materialRecords
-        .where((r) => r['material_id'] == materialId && r['type'] == 'out')
-        .fold(0.0, (sum, r) => sum + ((r['quantity'] as num?)?.toDouble() ?? 0));
-    return totalIn - totalOut;
-  }
-
-  List<Map<String, dynamic>> getMaterialsWithStock() {
-    return _materials.map((m) {
-      final materialId = m['id'] as int;
-      final totalIn = _materialRecords
-          .where((r) => r['material_id'] == materialId && r['type'] == 'in')
-          .fold(0.0, (sum, r) => sum + ((r['quantity'] as num?)?.toDouble() ?? 0));
-      final totalOut = _materialRecords
-          .where((r) => r['material_id'] == materialId && r['type'] == 'out')
-          .fold(0.0, (sum, r) => sum + ((r['quantity'] as num?)?.toDouble() ?? 0));
-      return {
-        ...m,
-        'total_in': totalIn,
-        'total_out': totalOut,
-        'stock': totalIn - totalOut,
-      };
-    }).toList();
-  }
+  int insertMaterial(Map<String, dynamic> material) { final id = _materialIdCounter++; _materials.add({'id': id, ...material}); return id; }
+  List<Map<String, dynamic>> getAllMaterials() => List.from(_materials)..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+  int updateMaterial(int id, Map<String, dynamic> material) { final i = _materials.indexWhere((m) => m['id'] == id); if (i != -1) { _materials[i] = {'id': id, ...material}; return 1; } return 0; }
+  int deleteMaterial(int id) { final i = _materials.indexWhere((m) => m['id'] == id); if (i != -1) { _materials.removeAt(i); return 1; } return 0; }
+  int insertMaterialRecord(Map<String, dynamic> r) { final id = _materialRecordIdCounter++; _materialRecords.add({'id': id, ...r}); return id; }
+  List<Map<String, dynamic>> getMaterialRecords(int mid) => _materialRecords.where((r) => r['material_id'] == mid).map((r) { final m = _materials.firstWhere((x) => x['id'] == mid, orElse: () => {}); return {...r, 'name': m['name'] ?? '', 'unit': m['unit'] ?? ''}; }).toList();
+  List<Map<String, dynamic>> getAllMaterialRecords() => _materialRecords.map((r) { final m = _materials.firstWhere((x) => x['id'] == r['material_id'], orElse: () => {}); return {...r, 'name': m['name'] ?? '', 'unit': m['unit'] ?? ''}; }).toList();
+  double getMaterialStock(int mid) { final tin = _materialRecords.where((r) => r['material_id'] == mid && r['type'] == 'in').fold(0.0, (s, r) => s + ((r['quantity'] as num?)?.toDouble() ?? 0)); final tout = _materialRecords.where((r) => r['material_id'] == mid && r['type'] == 'out').fold(0.0, (s, r) => s + ((r['quantity'] as num?)?.toDouble() ?? 0)); return tin - tout; }
+  List<Map<String, dynamic>> getMaterialsWithStock() => _materials.map((m) { final mid = m['id'] as int; final tin = _materialRecords.where((r) => r['material_id'] == mid && r['type'] == 'in').fold(0.0, (s, r) => s + ((r['quantity'] as num?)?.toDouble() ?? 0)); final tout = _materialRecords.where((r) => r['material_id'] == mid && r['type'] == 'out').fold(0.0, (s, r) => s + ((r['quantity'] as num?)?.toDouble() ?? 0)); return {...m, 'total_in': tin, 'total_out': tout, 'stock': tin - tout}; }).toList();
 
   Map<String, double> getFinanceSummary(String monthStart, String monthEnd) {
-    double totalSalary = 0;
-    double totalPaid = 0;
-
+    double totalSalary = 0, totalPaid = 0;
     for (var worker in _workers) {
       final workerId = worker['id'] as int;
       final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
-      final hourlyRate = dailyWage / 8;
-      
-      final presentCount = _attendance.where((a) =>
-        a['worker_id'] == workerId &&
-        a['date'] != null &&
-        a['date'].compareTo(monthStart) >= 0 &&
-        a['date'].compareTo(monthEnd) <= 0 &&
-        a['is_present'] == 1
-      ).length;
-      
-      final overtimeHours = _attendance
-          .where((a) =>
-            a['worker_id'] == workerId &&
-            a['date'] != null &&
-            a['date'].compareTo(monthStart) >= 0 &&
-            a['date'].compareTo(monthEnd) <= 0 &&
-            a['is_present'] == 1
-          )
-          .fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
-      
-      totalSalary += presentCount * dailyWage + overtimeHours * hourlyRate;
+      final overtimeRate = (worker['overtime_rate'] as num?)?.toDouble();
+      final otRate = overtimeRate ?? (dailyWage / 8);
+      final presentCount = _attendance.where((a) => a['worker_id'] == workerId && a['date'] != null && a['date'].compareTo(monthStart) >= 0 && a['date'].compareTo(monthEnd) <= 0 && a['is_present'] == 1).length;
+      final overtimeHours = _attendance.where((a) => a['worker_id'] == workerId && a['date'] != null && a['date'].compareTo(monthStart) >= 0 && a['date'].compareTo(monthEnd) <= 0 && a['is_present'] == 1).fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
+      totalSalary += presentCount * dailyWage + overtimeHours * otRate;
     }
-
-    totalPaid = _payments
-        .where((p) => 
-          p['date'] != null &&
-          p['date'].compareTo(monthStart) >= 0 &&
-          p['date'].compareTo(monthEnd) <= 0
-        )
-        .fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
-
-    return {
-      'totalSalary': totalSalary,
-      'totalPaid': totalPaid,
-      'totalOwed': totalSalary - totalPaid,
-    };
+    totalPaid = _payments.where((p) => p['date'] != null && p['date'].compareTo(monthStart) >= 0 && p['date'].compareTo(monthEnd) <= 0).fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
+    return {'totalSalary': totalSalary, 'totalPaid': totalPaid, 'totalOwed': totalSalary - totalPaid};
   }
 
   List<Map<String, dynamic>> getWorkerFinanceList(String monthStart, String monthEnd) {
     return _workers.map((worker) {
       final workerId = worker['id'] as int;
       final dailyWage = (worker['daily_wage'] as num?)?.toDouble() ?? 0;
-      final hourlyRate = dailyWage / 8;
-      
-      final presentCount = _attendance.where((a) =>
-        a['worker_id'] == workerId &&
-        a['date'] != null &&
-        a['date'].compareTo(monthStart) >= 0 &&
-        a['date'].compareTo(monthEnd) <= 0 &&
-        a['is_present'] == 1
-      ).length;
-      
-      final overtimeHours = _attendance
-          .where((a) =>
-            a['worker_id'] == workerId &&
-            a['date'] != null &&
-            a['date'].compareTo(monthStart) >= 0 &&
-            a['date'].compareTo(monthEnd) <= 0 &&
-            a['is_present'] == 1
-          )
-          .fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
-      
-      final paid = _payments
-          .where((p) => p['worker_id'] == workerId)
-          .fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
-      
-      final salary = presentCount * dailyWage + overtimeHours * hourlyRate;
-
-      return {
-        'id': workerId,
-        'name': worker['name'],
-        'work_type': worker['work_type'],
-        'daily_wage': dailyWage,
-        'work_days': presentCount,
-        'overtime_hours': overtimeHours,
-        'total_salary': salary,
-        'total_paid': paid,
-        'owed': salary - paid,
-      };
+      final overtimeRate = (worker['overtime_rate'] as num?)?.toDouble();
+      final otRate = overtimeRate ?? (dailyWage / 8);
+      final presentCount = _attendance.where((a) => a['worker_id'] == workerId && a['date'] != null && a['date'].compareTo(monthStart) >= 0 && a['date'].compareTo(monthEnd) <= 0 && a['is_present'] == 1).length;
+      final overtimeHours = _attendance.where((a) => a['worker_id'] == workerId && a['date'] != null && a['date'].compareTo(monthStart) >= 0 && a['date'].compareTo(monthEnd) <= 0 && a['is_present'] == 1).fold(0.0, (sum, a) => sum + ((a['overtime_hours'] as num?)?.toDouble() ?? 0));
+      final paid = _payments.where((p) => p['worker_id'] == workerId).fold(0.0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
+      final salary = presentCount * dailyWage + overtimeHours * otRate;
+      return {'id': workerId, 'name': worker['name'], 'work_type': worker['work_type'], 'daily_wage': dailyWage, 'work_days': presentCount, 'overtime_hours': overtimeHours, 'total_salary': salary, 'total_paid': paid, 'owed': salary - paid};
     }).toList();
   }
 }
