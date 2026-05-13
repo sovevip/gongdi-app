@@ -476,6 +476,18 @@ class DatabaseService {
     return (result.first['total'] as num?)?.toDouble() ?? 0;
   }
 
+  Future<double> getWorkerPaymentsByMonth(int workerId, String monthStart, String monthEnd) async {
+    final db = await _db;
+    if (kIsWeb) {
+      return (db as MemoryDatabase).getWorkerPaymentsByMonth(workerId, monthStart, monthEnd);
+    }
+    final result = await (db as Database).rawQuery('''
+      SELECT COALESCE(SUM(amount), 0) as total FROM $tablePayments
+      WHERE worker_id = ? AND date >= ? AND date <= ?
+    ''', [workerId, monthStart, monthEnd]);
+    return (result.first['total'] as num?)?.toDouble() ?? 0;
+  }
+
   Future<List<Map<String, dynamic>>> getAllPayments() async {
     final db = await _db;
     if (kIsWeb) {
